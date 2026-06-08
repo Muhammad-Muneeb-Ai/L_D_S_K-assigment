@@ -2,6 +2,7 @@ import streamlit as st
 import pickle
 import pandas as pd
 import time
+from pathlib import Path
 
 # ---------- Page Config ----------
 st.set_page_config(
@@ -102,20 +103,29 @@ st.markdown("""
 
 # ---------- Header ----------
 st.markdown('<div class="title-text">💰 Income Predictor Pro</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Demographic & employment data → Income >50K or ≤50K</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Demographic &amp; employment data → Income &gt;50K or ≤50K</div>', unsafe_allow_html=True)
 
 # ---------- Load Model with Cache ----------
+# FIX 1: Use absolute path so it works on Streamlit Cloud too
+MODEL_PATH = Path(__file__).resolve().parent / "model.pkl"
+
 @st.cache_resource
 def load_model():
-    with open("model.pkl", "rb") as f:
-        model = pickle.load(f)
-    return model
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(f"model.pkl not found at: {MODEL_PATH}")
+    with open(MODEL_PATH, "rb") as f:
+        mdl = pickle.load(f)
+    return mdl
 
 try:
     model = load_model()
     model_loaded = True
-except FileNotFoundError:
-    st.error("❌ Model file `model.pkl` not found. Please upload it to the repository.")
+except FileNotFoundError as e:
+    st.error(f"❌ Model file `model.pkl` not found. Please make sure it is uploaded to the repository.\n\nDetails: {e}")
+    model_loaded = False
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading model: {e}")
     model_loaded = False
     st.stop()
 
@@ -158,37 +168,48 @@ with center_col2:
 
 # ---------- Result Display ----------
 if predict_clicked:
+    # FIX 2: Ensure correct data types for all numeric fields
     input_dict = {
-        'age': [age],
-        'workclass': [workclass],
-        'fnlwgt': [fnlwgt],
-        'education': [education],
-        'educational-num': [educational_num],
-        'marital-status': [marital_status],
-        'occupation': [occupation],
-        'relationship': [relationship],
-        'race': [race],
-        'gender': [gender],
-        'capital-gain': [capital_gain],
-        'capital-loss': [capital_loss],
-        'hours-per-week': [hours_per_week],
-        'native-country': [native_country]
+        'age':              [int(age)],
+        'workclass':        [str(workclass)],
+        'fnlwgt':           [int(fnlwgt)],
+        'education':        [str(education)],
+        'educational-num':  [int(educational_num)],
+        'marital-status':   [str(marital_status)],
+        'occupation':       [str(occupation)],
+        'relationship':     [str(relationship)],
+        'race':             [str(race)],
+        'gender':           [str(gender)],
+        'capital-gain':     [int(capital_gain)],
+        'capital-loss':     [int(capital_loss)],
+        'hours-per-week':   [int(hours_per_week)],
+        'native-country':   [str(native_country)],
     }
     df_input = pd.DataFrame(input_dict)
 
-    with st.spinner("Analyzing your data..."):
-        time.sleep(0.5)  # slight delay for better UX
-        prediction = model.predict(df_input)[0]
+    try:
+        with st.spinner("Analyzing your data..."):
+            time.sleep(0.5)
+            prediction = model.predict(df_input)[0]
 
-    st.markdown('<div class="result-box">', unsafe_allow_html=True)
-    if prediction == ">50K":
-        st.markdown(f'<div class="result-high">✅ HIGH INCOME (>50K)</div>', unsafe_allow_html=True)
-        st.balloons()
-    else:
-        st.markdown(f'<div class="result-low">⚠️ LOW INCOME (≤50K)</div>', unsafe_allow_html=True)
-    st.markdown('<p style="margin-top: 0.5rem;">Based on SVC model with 86.29% accuracy</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        # FIX 3: Strip whitespace from prediction value (some models return " >50K" with space)
+        prediction_clean = str(prediction).strip()
+
+        st.markdown('<div class="result-box">', unsafe_allow_html=True)
+
+        if ">50K" in prediction_clean or "1" == prediction_clean:
+            st.markdown('<div class="result-high">✅ HIGH INCOME (&gt;50K)</div>', unsafe_allow_html=True)
+            st.balloons()
+        else:
+            st.markdown('<div class="result-low">⚠️ LOW INCOME (≤50K)</div>', unsafe_allow_html=True)
+
+        st.markdown(f'<p style="margin-top: 0.5rem;">Predicted class: <b>{prediction_clean}</b> | Based on SVC model with 86.29% accuracy</p>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"❌ Prediction failed: {e}")
+        st.info("Please check that all input fields are filled correctly.")
 
 # ---------- Footer ----------
 st.markdown("---")
-st.markdown('<div class="footer">🏆 Best Model: SVC | Accuracy: 86.29% | Built with Streamlit & Scikit-learn</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">🏆 Best Model: SVC | Accuracy: 86.29% | Built with Streamlit &amp; Scikit-learn</div>', unsafe_allow_html=True)
