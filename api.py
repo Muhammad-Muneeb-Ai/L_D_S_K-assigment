@@ -11,6 +11,25 @@ model_path = Path(__file__).resolve().parent / "model.pkl"
 try:
     with model_path.open("rb") as f:
         model = pickle.load(f)
+        
+    # Patch the model for scikit-learn version compatibility
+    def patch_estimator(estimator):
+        if hasattr(estimator, 'steps'):
+            for name, step in estimator.steps:
+                patch_estimator(step)
+        elif hasattr(estimator, 'transformers_'):
+            for name, trans, cols in estimator.transformers_:
+                patch_estimator(trans)
+        elif hasattr(estimator, 'named_transformers_'):
+            for trans in estimator.named_transformers_.values():
+                patch_estimator(trans)
+        
+        from sklearn.svm import SVC
+        if isinstance(estimator, SVC):
+            if not hasattr(estimator, '_effective_probability'):
+                estimator._effective_probability = getattr(estimator, 'probability', False)
+                
+    patch_estimator(model)
 except FileNotFoundError:
     raise RuntimeError(f"Model file not found: {model_path}")
 except Exception as exc:

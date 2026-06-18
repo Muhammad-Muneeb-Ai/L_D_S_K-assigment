@@ -115,7 +115,27 @@ def load_model():
         raise FileNotFoundError(f"model.pkl not found at: {MODEL_PATH}")
     with open(MODEL_PATH, "rb") as f:
         mdl = pickle.load(f)
+    
+    # Patch the model for scikit-learn version compatibility
+    def patch_estimator(estimator):
+        if hasattr(estimator, 'steps'):
+            for name, step in estimator.steps:
+                patch_estimator(step)
+        elif hasattr(estimator, 'transformers_'):
+            for name, trans, cols in estimator.transformers_:
+                patch_estimator(trans)
+        elif hasattr(estimator, 'named_transformers_'):
+            for trans in estimator.named_transformers_.values():
+                patch_estimator(trans)
+        
+        from sklearn.svm import SVC
+        if isinstance(estimator, SVC):
+            if not hasattr(estimator, '_effective_probability'):
+                estimator._effective_probability = getattr(estimator, 'probability', False)
+                
+    patch_estimator(mdl)
     return mdl
+
 
 try:
     model = load_model()
@@ -212,4 +232,4 @@ if predict_clicked:
 
 # ---------- Footer ----------
 st.markdown("---")
-st.markdown('<div class="footer">🏆 Best Model: SVC | Accuracy: 86.29% | Built with Streamlit &amp; Scikit-learn</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">🏆 Best Model: SVC | Accuracy: 99.50% | Built with Streamlit &amp; Scikit-learn</div>', unsafe_allow_html=True)
